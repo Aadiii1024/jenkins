@@ -12,9 +12,7 @@ pipeline {
     stage('Checkout') {
       steps {
         echo "Cloning project from GitHub with credentialsId=${env.GIT_CREDS}"
-        git branch: "${env.GIT_BRANCH}",
-            url: "${env.GIT_URL}",
-            credentialsId: "${env.GIT_CREDS}"
+        git branch: "${env.GIT_BRANCH}", url: "${env.GIT_URL}", credentialsId: "${env.GIT_CREDS}"
       }
     }
 
@@ -27,7 +25,7 @@ pipeline {
 
     stage('Deploy to IIS (mirror workspace)') {
       steps {
-        // write a temporary ps1 from a here-string and run it (avoids quoting issues)
+        // Write ASCII temp ps1 and execute in current session (avoids nested powershell quoting/encoding issues)
         powershell '''
 $scriptPath = Join-Path $env:WORKSPACE "__tmp_deploy.ps1"
 $here = @'
@@ -57,7 +55,7 @@ if ($robocopy) {
         Copy-Item -Path (Join-Path $src '*') -Destination $dst -Recurse -Force
     }
 } else {
-    Write-Output "robocopy not found — using Copy-Item fallback"
+    Write-Output "robocopy not found - using Copy-Item fallback"
     Remove-Item -Path (Join-Path $dst '*') -Recurse -Force -ErrorAction SilentlyContinue
     Copy-Item -Path (Join-Path $src '*') -Destination $dst -Recurse -Force
 }
@@ -66,16 +64,16 @@ Write-Output "Deploy copying complete."
 Write-Output "=== Deploy: End ==="
 '@
 
-# write and show the script for debugging
-$here | Out-File -FilePath $scriptPath -Encoding UTF8
+# write ASCII (no BOM) to avoid encoding surprises
+Set-Content -Path $scriptPath -Value $here -Encoding Ascii
 Write-Output ("Wrote deploy script to: {0}" -f $scriptPath)
+# print to console for debugging
 Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
 
-# execute the script via -File (safe)
-powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath
+# Execute the script content inside this runspace (avoids nested powershell process quoting)
+Invoke-Expression -Command $here
 
-# optional: remove the temp script (comment in/out as you like)
-# Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+# optional: Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
 '''
       }
     }
@@ -149,13 +147,11 @@ try {
 Write-Output "=== IIS Setup: End ==="
 '@
 
-$here | Out-File -FilePath $scriptPath -Encoding UTF8
+Set-Content -Path $scriptPath -Value $here -Encoding Ascii
 Write-Output ("Wrote IIS script to: {0}" -f $scriptPath)
 Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
 
-powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath
-
-# Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+Invoke-Expression -Command $here
 '''
       }
     }
@@ -187,26 +183,18 @@ try {
 }
 '@
 
-$here | Out-File -FilePath $scriptPath -Encoding UTF8
+Set-Content -Path $scriptPath -Value $here -Encoding Ascii
 Write-Output ("Wrote verify script to: {0}" -f $scriptPath)
 Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
 
-powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath
-
-# Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+Invoke-Expression -Command $here
 '''
       }
     }
   } // stages
 
   post {
-    success {
-      echo "✅ Deployment finished. From this server open: http://localhost/index.html"
-      echo "✅ From another machine open: http://<server-ip-or-hostname>/ (or /index.html)"
-    }
-    failure {
-      echo "❌ Deployment or verification failed — check console output above for errors."
-      echo "If IIS is not installed on this host, install IIS or change DEPLOY_DIR to point to a host that serves static files."
-    }
+    success { echo "✅ Deployment finished. Open http://localhost/index.html" }
+    failure { echo "❌ Deployment or verification failed — check console output above for errors." }
   }
 }
