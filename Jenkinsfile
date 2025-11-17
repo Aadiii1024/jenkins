@@ -25,7 +25,6 @@ pipeline {
 
     stage('Deploy to IIS (mirror workspace)') {
       steps {
-        // Write ASCII temp ps1 and execute in current session (avoids nested powershell quoting/encoding issues)
         powershell '''
 $scriptPath = Join-Path $env:WORKSPACE "__tmp_deploy.ps1"
 $here = @'
@@ -64,16 +63,13 @@ Write-Output "Deploy copying complete."
 Write-Output "=== Deploy: End ==="
 '@
 
-# write ASCII (no BOM) to avoid encoding surprises
-Set-Content -Path $scriptPath -Value $here -Encoding Ascii
+# write UTF8 without BOM to avoid encoding surprises
+Set-Content -Path $scriptPath -Value $here -Encoding UTF8NoBOM
 Write-Output ("Wrote deploy script to: {0}" -f $scriptPath)
-# print to console for debugging
 Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
 
-# Execute the script content inside this runspace (avoids nested powershell process quoting)
-Invoke-Expression -Command $here
-
-# optional: Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+# execute the temp ps1 in this runspace (call operator)
+& $scriptPath
 '''
       }
     }
@@ -112,10 +108,10 @@ if ($iisAvailable) {
     try {
         $site = Get-Website -Name 'Default Web Site' -ErrorAction SilentlyContinue
         if ($null -eq $site) {
-            Write-Output "Default Web Site not found — creating it bound to port 80."
+            Write-Output "Default Web Site not found - creating it bound to port 80."
             New-Website -Name 'Default Web Site' -Port 80 -PhysicalPath $dst -Force
         } else {
-            Write-Output "Default Web Site exists — updating physical path"
+            Write-Output "Default Web Site exists - updating physical path"
             Set-ItemProperty "IIS:\\Sites\\Default Web Site" -Name physicalPath -Value $dst -ErrorAction SilentlyContinue
         }
 
@@ -134,7 +130,7 @@ if ($iisAvailable) {
         Write-Output ("IIS config error: {0}" -f $_.Exception.Message)
     }
 } else {
-    Write-Output "IIS not available — skipped site creation/config. To host, install IIS on this machine."
+    Write-Output "IIS not available - skipped site creation/config. To host, install IIS on this machine."
 }
 
 try {
@@ -147,11 +143,11 @@ try {
 Write-Output "=== IIS Setup: End ==="
 '@
 
-Set-Content -Path $scriptPath -Value $here -Encoding Ascii
+Set-Content -Path $scriptPath -Value $here -Encoding UTF8NoBOM
 Write-Output ("Wrote IIS script to: {0}" -f $scriptPath)
 Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
 
-Invoke-Expression -Command $here
+& $scriptPath
 '''
       }
     }
@@ -183,11 +179,11 @@ try {
 }
 '@
 
-Set-Content -Path $scriptPath -Value $here -Encoding Ascii
+Set-Content -Path $scriptPath -Value $here -Encoding UTF8NoBOM
 Write-Output ("Wrote verify script to: {0}" -f $scriptPath)
 Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
 
-Invoke-Expression -Command $here
+& $scriptPath
 '''
       }
     }
