@@ -26,16 +26,17 @@ pipeline {
       steps {
         echo 'Static site — no build step.'
         // list files to help debugging
-        powershell 'Write-Output \"Workspace: $env:WORKSPACE\"; Get-ChildItem -Recurse -Force -Depth 2 | Select-Object FullName,Length | Format-Table -AutoSize'
+        powershell 'Write-Output "Workspace: $env:WORKSPACE"; Get-ChildItem -Recurse -Force -Depth 2 | Select-Object FullName,Length | Format-Table -AutoSize'
       }
     }
 
     stage('Deploy to IIS (mirror workspace)') {
       steps {
+        // Use env variables inside PowerShell to avoid Groovy quoting issues
         powershell '''
 Write-Output "=== Deploy: Start ==="
 $src = $env:WORKSPACE
-$dst = "''' + "${DEPLOY_DIR}" + '''"
+$dst = $env:DEPLOY_DIR
 
 Write-Output "Source: $src"
 Write-Output "Destination: $dst"
@@ -52,7 +53,6 @@ if (-not (Test-Path $dst)) {
 $robocopy = Get-Command robocopy.exe -ErrorAction SilentlyContinue
 if ($robocopy) {
     Write-Output "Using robocopy to mirror workspace -> destination"
-    # /MIR mirrors; /XD excludes .git; /NFL/NJS reduce log noise
     $args = @($src, $dst, '/MIR', '/XD', '.git','.svn','.jenkins', '/NFL','/NDL','/NJH','/NJS','/NP')
     $proc = Start-Process -FilePath $robocopy.Path -ArgumentList $args -Wait -PassThru
     Write-Output "robocopy exit code: $($proc.ExitCode)"
@@ -78,7 +78,7 @@ Write-Output "=== Deploy: End ==="
         powershell '''
 Write-Output "=== IIS Setup: Start ==="
 
-$dst = "''' + "${DEPLOY_DIR}" + '''"
+$dst = $env:DEPLOY_DIR
 
 # Try to import WebAdministration
 $iisAvailable = $false
@@ -187,4 +187,3 @@ try {
     }
   }
 }
-
