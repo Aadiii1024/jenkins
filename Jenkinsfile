@@ -27,8 +27,10 @@ pipeline {
 
     stage('Deploy to IIS (mirror workspace)') {
       steps {
-        // Inline PowerShell — use env: variables to avoid Groovy quoting issues
+        // write a temporary ps1 from a here-string and run it (avoids quoting issues)
         powershell '''
+$scriptPath = Join-Path $env:WORKSPACE "__tmp_deploy.ps1"
+$here = @'
 Write-Output "=== Deploy: Start ==="
 $src = $env:WORKSPACE
 $dst = $env:DEPLOY_DIR
@@ -62,6 +64,18 @@ if ($robocopy) {
 
 Write-Output "Deploy copying complete."
 Write-Output "=== Deploy: End ==="
+'@
+
+# write and show the script for debugging
+$here | Out-File -FilePath $scriptPath -Encoding UTF8
+Write-Output ("Wrote deploy script to: {0}" -f $scriptPath)
+Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
+
+# execute the script via -File (safe)
+powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath
+
+# optional: remove the temp script (comment in/out as you like)
+# Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
 '''
       }
     }
@@ -69,6 +83,8 @@ Write-Output "=== Deploy: End ==="
     stage('IIS ensure & configure') {
       steps {
         powershell '''
+$scriptPath = Join-Path $env:WORKSPACE "__tmp_iis_config.ps1"
+$here = @'
 Write-Output "=== IIS Setup: Start ==="
 $dst = $env:DEPLOY_DIR
 
@@ -131,6 +147,15 @@ try {
 }
 
 Write-Output "=== IIS Setup: End ==="
+'@
+
+$here | Out-File -FilePath $scriptPath -Encoding UTF8
+Write-Output ("Wrote IIS script to: {0}" -f $scriptPath)
+Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
+
+powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath
+
+# Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
 '''
       }
     }
@@ -138,6 +163,8 @@ Write-Output "=== IIS Setup: End ==="
     stage('Verify site (localhost)') {
       steps {
         powershell '''
+$scriptPath = Join-Path $env:WORKSPACE "__tmp_verify.ps1"
+$here = @'
 Write-Output "=== Verifying http://localhost/index.html ==="
 try {
     $resp = Invoke-WebRequest -Uri "http://localhost/index.html" -UseBasicParsing -TimeoutSec 10
@@ -158,6 +185,15 @@ try {
     Write-Output ("HTTP_ERROR: {0}" -f $_.Exception.Message)
     exit 3
 }
+'@
+
+$here | Out-File -FilePath $scriptPath -Encoding UTF8
+Write-Output ("Wrote verify script to: {0}" -f $scriptPath)
+Get-Content -Path $scriptPath -TotalCount 200 | ForEach-Object { Write-Output $_ }
+
+powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath
+
+# Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
 '''
       }
     }
