@@ -7,7 +7,7 @@ pipeline {
     // set this credential in Jenkins (username/token or username/password) and reference here
     GIT_CREDS  = 'github-pat'
     // git URL - update to your repo if different
-    GIT_URL    = 'https://github.com/iamanoj12/isepractice.git'
+    GIT_URL    = 'https://github.com/Aadiii1024/jenkins.git'
     GIT_BRANCH = 'master'
   }
 
@@ -187,3 +187,4 @@ try {
     }
   }
 }
+
